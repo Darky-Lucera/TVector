@@ -88,7 +88,7 @@ public:
     constexpr TVector & operator=(tvector &&)       = default;
 
     constexpr operator       vector &()                                     { return *reinterpret_cast<vector *>(this);                     }
-    constexpr operator const vector &() const                               { return *reinterpret_cast<vector *>(this);                     }
+    constexpr operator const vector &() const                               { return *reinterpret_cast<const vector *>(this);               }
 
     constexpr const T & operator[](ptrdiff idx) const                       { return vector::operator[](correctInsideIdx(idx));             }
     constexpr       T & operator[](ptrdiff idx)                             { return vector::operator[](correctInsideIdx(idx));             }
@@ -171,8 +171,8 @@ public:
 
     // Find
     //---------------------------------
-    constexpr iterator find(const T &value) const                     { return std::find(const_cast<tvector *>(this)->begin(), const_cast<tvector *>(this)->end(), value);                    }
-    //constexpr iterator       find(const T &value)                           { return std::find(begin(), end(), value);                      }
+    constexpr const_iterator find(const T &value) const                     { return std::find(cbegin(), cend(), value);                    }
+    constexpr iterator       find(const T &value)                           { return std::find( begin(),  end(), value);                    }
 
     constexpr const_iterator find_if(std::function<bool(const T &)> op) const {
         return std::find_if(cbegin(), cend(), op);
