@@ -313,8 +313,15 @@ public:
     // Usually: std::function<O(const T &)>
     //---------------------------------
     template<class Output, class UnaryOperation>
-    constexpr Output transform(Output firstOutput, UnaryOperation op) const {
-        return std::transform(cbegin(), cend(), firstOutput, op);
+    constexpr const tvector & transform(Output firstOutput, UnaryOperation op) const {
+        std::transform(cbegin(), cend(), firstOutput, op);
+        return *this;
+    }
+
+    template<class Output, class UnaryOperation>
+    constexpr tvector & transform(Output firstOutput, UnaryOperation op) {
+        std::transform(cbegin(), cend(), firstOutput, op);
+        return *this;
     }
 
     // Transforms and stores in output each component of the vector combined with the firstInput iterator elements using the op function.
@@ -322,8 +329,15 @@ public:
     // Usually: std::function<O(const T &, const I &)>
     //---------------------------------
     template<class Input, class Output, class BinaryOperation>
-    constexpr Output transform(Input firstInput, Output firstOutput, BinaryOperation op) const {
-        return std::transform(cbegin(), cend(), firstInput, firstOutput, op);
+    constexpr const tvector & transform(Input firstInput, Output firstOutput, BinaryOperation op) const {
+        std::transform(cbegin(), cend(), firstInput, firstOutput, op);
+        return *this;
+    }
+
+    template<class Input, class Output, class BinaryOperation>
+    constexpr tvector & transform(Input firstInput, Output firstOutput, BinaryOperation op) {
+        std::transform(cbegin(), cend(), firstInput, firstOutput, op);
+        return *this;
     }
 
     // Transforms and stores each component of the vector using the op function into the output.
@@ -332,11 +346,21 @@ public:
     // Usually: std::function<O(const T &)>
     //---------------------------------
     template<template <typename...> class OutputClass, typename... Args, class UnaryOperation>
-    constexpr void transform(OutputClass<Args...> &output, UnaryOperation op) const {
+    constexpr const tvector & transform(OutputClass<Args...> &output, UnaryOperation op) const {
         if (output.size() < size())
             output.resize(size());
 
         std::transform(cbegin(), cend(), output.begin(), op);
+        return *this;
+    }
+
+    template<template <typename...> class OutputClass, typename... Args, class UnaryOperation>
+    constexpr tvector & transform(OutputClass<Args...> &output, UnaryOperation op) {
+        if (output.size() < size())
+            output.resize(size());
+
+        std::transform(cbegin(), cend(), output.begin(), op);
+        return *this;
     }
 
     // for_each
