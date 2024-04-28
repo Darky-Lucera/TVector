@@ -3,6 +3,22 @@
 #include <TVector.h>
 #include <cstdio>
 
+#if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+    #include <chrono>
+    #include <random>
+    #include <execution>
+
+    //using clock      = std::chrono::high_resolution_clock;
+    using time_point = std::chrono::high_resolution_clock::time_point;
+
+    //---------------------------------
+    template <typename T>
+    inline uint32_t
+    getTime(T time) {
+        return uint32_t(std::chrono::duration_cast<std::chrono::nanoseconds>(time).count());
+    }
+#endif
+
 using namespace MindShake;
 
 //-------------------------------------
@@ -508,6 +524,18 @@ TEST_CASE_FIXTURE(Fixture, "Algorithms") {
         ints.stable_sort([](const int &a, const int &b) { return a < b;  });
         CHECK(ints == TVector<int> { 0, 1, 2, 3, 4, 5 });
 
+        CHECK(ints.binary_search(0));
+        CHECK(ints.binary_search(3));
+        CHECK(ints.binary_search(5));
+        CHECK(ints.binary_search(10) == false);
+        CHECK(ints.binary_search(-1) == false);
+
+        CHECK(ints.binary_search_it(0) != ints.cend());
+        CHECK(ints.binary_search_it(3) != ints.cend());
+        CHECK(ints.binary_search_it(5) != ints.cend());
+        CHECK(ints.binary_search_it(10) == ints.cend());
+        CHECK(ints.binary_search_it(-1) == ints.cend());
+
         //--
         ints = { 3, 3, 1, 1, 4, 4 };
         ints.sort()
@@ -516,6 +544,7 @@ TEST_CASE_FIXTURE(Fixture, "Algorithms") {
         CHECK(ints == TVector<int> { 4, 3, 1 });
 
         ints.shuffle(); // We cannot check it
+
     }
 
     SUBCASE("Rotate") {
@@ -574,5 +603,72 @@ TEST_CASE_FIXTURE(Fixture, "Algorithms") {
             CHECK(((p2.first == 5) && (p2.second == 0)));
 #endif
         }
+
+        SUBCASE("Accumulate/Reduce") {
+            TVector<int>    ints = { 0, 1, 2, 3, 4, 5 };
+            TVector<float>  floats = { 0.1f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f };
+
+            CHECK(ints.accumulate(0, [](const int &a, const int &b) { return a + b; }) == 15);
+            CHECK_EQ(floats.accumulate(0, [](float a, float b) { return a + b; }), 15);         // init parameter is int, so all operations are rounded to int
+            CHECK_EQ(floats.accumulate(0.0f, [](float a, float b) { return a + b; }), 17.1f);   // init parameter is float
+            CHECK(ints.accumulate(std::string(), [](const std::string &a, const int &b) { return a + std::to_string(b); }) == std::string { "012345" });
+
+            CHECK_EQ(ints.reduce(0, [](const int &a, const int &b) { return a + b; }), 15);
+            CHECK_EQ(floats.reduce(0, [](float a, float b) { return a + b; }), 15);             // init parameter is int, so all operations are rounded to int
+            CHECK_EQ(floats.reduce(0.0f, [](float a, float b) { return a + b; }), 17.1f);       // init parameter is float
+            // We cannot do this because A and B are not interchangeable (string, int != int, string)
+            //CHECK(ints.reduce(std::string {}, [](const std::string &a, const int &b) { return a + std::to_string(b); }) == std::string { "012345" });
+
+//#if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+            auto str = ints.transform_reduce(std::string {},
+                                    [](const std::string &a, const std::string &b) {
+                                        return a + b;
+                                    },
+                                    [](const int &v) {
+                                        return std::to_string(v);
+                                    });
+            CHECK(str == std::string { "012345" });
+//#endif
+        }
+
+#if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+        SUBCASE("Accumulate/Reduce time") {
+            std::random_device   rd;
+            std::mt19937         g { rd() };
+
+            TVector<int>    ints;
+            ints.resize(100000);
+            for (auto &v : ints) {
+                v = g();
+            }
+
+            auto start = std::chrono::high_resolution_clock::now();
+            ints.accumulate(0, [](int a, int b) { return (a * b) + a + b; });
+            auto end = std::chrono::high_resolution_clock::now();
+            printf("Accumulate:       %u ns\n", getTime(end - start));
+
+            start = std::chrono::high_resolution_clock::now();
+            ints.reduce(ExecutionPolicy::seq, 0, [](int a, int b) { return (a * b) + a + b; });
+            end = std::chrono::high_resolution_clock::now();
+            printf("Reduce SEQ:       %u ns\n", getTime(end - start));
+
+            start = std::chrono::high_resolution_clock::now();
+            ints.reduce(ExecutionPolicy::par, 0, [](int a, int b) { return (a * b) + a + b; });
+            end = std::chrono::high_resolution_clock::now();
+            printf("Reduce PAR:       %u ns\n", getTime(end - start));
+
+            start = std::chrono::high_resolution_clock::now();
+            ints.reduce(ExecutionPolicy::par_unseq, 0, [](int a, int b) { return (a * b) + a + b; });
+            end = std::chrono::high_resolution_clock::now();
+            printf("Reduce PAR UNSEQ: %u ns\n", getTime(end - start));
+
+#if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+            start = std::chrono::high_resolution_clock::now();
+            ints.reduce(ExecutionPolicy::unseq, 0, [](int a, int b) { return (a * b) + a + b; });
+            end = std::chrono::high_resolution_clock::now();
+            printf("Reduce PAR:       %u ns\n", getTime(end - start));
+    #endif
+        }
+#endif
     }
 }

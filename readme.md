@@ -9,16 +9,20 @@ In any case, this is a new implementation.
 **Index**:
 
 - [Element access](#element-access)
-- [Automatic conversions](#automatic-conversions)
   - [erase_quick](#erase_quick)
+- [Automatic conversions](#automatic-conversions)
 - [Extra functionality](#extra-functionality)
   - [if_new](#if_new)
   - [Search operations](#search-operations)
-  - [Copy / replace operations](#Copy-/-replace-operations)
+  - [Copy / replace operations](#copy-/-replace-operations)
   - [for_each](#for_each)
+  - [Accumulate / reduce](#accumulate-/-reduce)
   - [transform](#transform)
+  - [transform reduce](#transform-reduce)
+    - [Execution policies](#execution-policies)
   - [Sorting and related operations](#sorting-and-related-operations)
-  - [Reverse / Rotate / Shuffle](#Reverse-/-Rotate-/-Shuffle)
+  - [Reverse / Rotate / Shuffle](#reverse-/-Rotate-/-Shuffle)
+  - [Min / Max / MinMax](#Min-/-Max-/-MinMax)
 
 ## Element access
 
@@ -289,13 +293,72 @@ ints.for_each([](int v) {
 }
 ```
 
-### transform
+### Accumulate / reduce
+
+Accumulate and reduce perform accumulation operations on a range of elements. However, accumulate is simpler and more straightforward, as it only performs a left-to-right accumulation of values, while reduce is more flexible, allowing for parallelized and optimized reductions. reduce may offer better performance for large datasets or when parallel execution is possible, but accumulate is often sufficient and easier to use for basic accumulation tasks.
+
+Pseudocode:
+
+```cpp
+auto result = init;
+for (const auto &v : values) {
+    result = op(result, v);
+}
+return result;
+```
+
+The main differences between accumulate and reduce are:
+
+- Order of Evaluation:
+  - **accumulate**: Guarantees a strict left-to-right order of evaluation. Each element in the sequence is combined with the accumulated value in a sequential manner.
+  - **reduce**: Does not guarantee the order of evaluation. It may apply the binary operation to the elements of the range in any order, depending on the execution policy and the underlying parallel execution strategy.
+- Parallel Execution:
+  - **reduce**: Designed to exploit parallelism when used with suitable execution policies and when the operation allows for it. It can efficiently utilize multiple threads to process different portions of the sequence concurrently, potentially improving performance.
+
+You can also apply an [execution policy](#execution-policies) to reduce.
+
+More info:
+
+[accumulate])https://en.cppreference.com/w/cpp/algorithm/accumulate)
+[reduce])https://en.cppreference.com/w/cpp/algorithm/reduce)
+
+Example:
+
+```cpp
+TVector<int>    ints   = { 0, 1, 2, 3, 4, 5 };
+TVector<float>  floats = { 0.1f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f };
+
+ints.accumulate(0, [](const int &a, const int &b) { return a + b; });       // 15
+ints.reduce(0, [](const int &a, const int &b) { return a + b; });       // 15
+// This will not work using reduce because the order of operations is not guaranteed
+ints.accumulate(std::string(), [](const std::string &a, const int &b) {     // "012345"
+    return a + std::to_string(b);
+});
+
+floats.reduce(0,    [](float a, float b) { return a + b; });
+floats.accumulate(0,    [](float a, float b) { return a + b; });            // 15, because the init parameter is an int, so all operations are rounded to int
+
+floats.reduce(0.0f, [](float a, float b) { return a + b; });
+floats.accumulate(0.0f, [](float a, float b) { return a + b; });            // 17.1f, because the init parameter is a float
+```
+
+### Transform
 
 Applies the given function to the elements of the given input, and stores the result in an output vector.
+
+You can also apply an [execution policy](#execution-policies) to transform.
 
 - ```transform(output, O op(const T &))```:
 - ```transform(firstOutput, O op(const T &))```:
 - ```transform(firstInput, firstOutput, O op(const T &, const I &))```:
+
+Pseudocode:
+
+```cpp
+for (const auto &v : values) {
+    result.push_back(op(v));
+}
+```
 
 More info:
 
@@ -311,12 +374,50 @@ TVector output, output2;
 ints.transform(output, [](int v) { return v * 2;}); // output = {2, 4, 6}
 
 output2.resize(ints.size());
-ints.transform(output.begin(),
+ints.transform(output.begin(),  // Now we use output as input
                output2.begin(),
                [](int a, int b) {
                     return a + b;
                 });                 // output2 = {3, 6, 9}
 ```
+
+### Transform Reduce
+
+transform_reduce combines both transforming and reducing operations into a single step, making it faster, simpler, and more memory-efficient compared to chaining transform and reduce. By doing both tasks in one go, it avoids unnecessary iterations over the data, leading to cleaner and more concise code.
+
+You can also apply an [execution policy](#execution-policies) to transform_reduce.
+
+- ```transform_reduce(U init, T reduce(const T &, const T &), T transform(const V &))```
+
+Pseudocode:
+
+```cpp
+auto result = init;
+for (const auto &v : values) {
+    result = reduce(result, transform(v));
+}
+return result;
+```
+
+More info:
+
+- [transform_reduce](https://en.cppreference.com/w/cpp/algorithm/transform_reduce)
+
+#### Execution policies
+
+If you are using C++17 you can also specify the execution policy (as an enum) for transform, reduce and transform_reduce.
+
+- seq:       std::execution::seq: execution may not be parallelized.
+- par:       std::execution::par: execution may be parallelized.
+- par_unseq: std::execution::par_unseq: execution may be parallelized, vectorized, or migrated across threads.
+- unseq:     std::execution::unseq: execution may be vectorized. [C++20]
+
+- ```transform(policy, output, O op(const T &))```
+- ```transform(policy, firstOutput, O op(const T &))```
+- ```transform(policy, firstInput, firstOutput, O op(const T &, const I &))```
+- ```reduce(policy, init, T reduce(const T &, const T &))```
+- ```transform_reduce(policy, init, T reduce(const T &, const T &), T transform(const V &))```
+
 
 ### Sorting and related operations
 
@@ -331,6 +432,9 @@ ints.transform(output.begin(),
 
 - ```binary_search(value)```: Finds an element in a sorted vector.
 - ```binary_search(value, bool less(const T &, conat T &))```: Finds an element in a sorted vector using a given less function.
+
+- ```binary_search_it(value)```: Finds an element in a sorted vector and returns an iterator or cend().
+- ```binary_search_it(value, bool less(const T &, conat T &))```: Finds an element in a sorted vector, using a given less function,  and returns an iterator or cend().
 
 - ```unique()```: Removes duplicated elements in a sorted vector.
 

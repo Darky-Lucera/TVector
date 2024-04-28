@@ -5,16 +5,29 @@
 #include <vector>
 #include <algorithm>
 #include <functional>
+#include <numeric>
 #include <cmath>
 
 #if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
     #include <random>
+    #include <execution>
 #endif
 
 namespace MindShake {
 
+//#if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+
+    enum class ExecutionPolicy {
+        seq,        // std::execution::seq: execution may not be parallelized.
+        par,        // std::execution::par: execution may be parallelized.
+        par_unseq,  // std::execution::par_unseq: execution may be parallelized, vectorized, or migrated across threads.
+        unseq,      // std::execution::unseq: execution may be vectorized. [C++20]
+    };
+
+//#endif
+
 //-------------------------------------
-template<class T, class Allocator = std::allocator<T>>
+template <class T, class Allocator = std::allocator<T>>
 class TVector : public std::vector<T, Allocator> {
 public:
     using vector  = std::vector<T, Allocator>;
@@ -60,7 +73,7 @@ public:
     using difference_type = typename vector::difference_type;
     using iterator        = typename vector::iterator;
     using const_iterator  = typename vector::const_iterator;
-    using reverse_iterator = typename vector::reverse_iterator;
+    using reverse_iterator       = typename vector::reverse_iterator;
     using const_reverse_iterator = typename vector::const_reverse_iterator;
 
     // Short names
@@ -105,7 +118,7 @@ public:
     // If the users wants to insert at end, it should use insert(-1, value)
     // Note: -1 == end(), -2 == end() - 1, ...
     constexpr iterator  insert(ptrdiff idx, const T &value)                 { return insert(correct(idx), value);                           }
-    template<class Input>
+    template <class Input>
     constexpr iterator  insert(ptrdiff idx, Input first, Input last)        { return insert(correct(idx), first, last);                     }
     constexpr iterator  insert(ptrdiff idx, std::initializer_list<T> list)  { return insert(correct(idx), list);                            }
     constexpr iterator  insert(ptrdiff idx, const vector &v)                { return insert(correct(idx), v.cbegin(), v.cend());            }
@@ -228,7 +241,7 @@ public:
     constexpr bool any_of(std::function<bool(const T &)> op) const         { return std::any_of(cbegin(), cend(), op);                      }
     constexpr bool none_of(std::function<bool(const T &)> op) const        { return std::none_of(cbegin(), cend(), op);                     }
 
-    // replace
+    // Replace
     //---------------------------------
     constexpr tvector & replace(const T &oldValue, const T &newValue) {
         std::replace(begin(), end(), oldValue, newValue);
@@ -247,7 +260,7 @@ public:
         return *this;
     }
 
-    // replace_copy
+    // Replace and copy
     //---------------------------------
     constexpr tvector & replace_copy(tvector &output, const T &oldValue, const T &newValue) {
         std::replace_copy(cbegin(), cend(), std::back_inserter(output), oldValue, newValue);
@@ -270,7 +283,7 @@ public:
         return *this;
     }
 
-    // copy / filter
+    // Copy
     //---------------------------------
     constexpr tvector & copy(tvector &output) {
         output.reserve(size());
@@ -308,62 +321,7 @@ public:
         return output;
     }
 
-    // Transforms and stores each component of the vector using the op function into the output iterator.
-    // output[i] = op(this[i])
-    // Usually: std::function<O(const T &)>
-    //---------------------------------
-    template<class Output, class UnaryOperation>
-    constexpr const tvector & transform(Output firstOutput, UnaryOperation op) const {
-        std::transform(cbegin(), cend(), firstOutput, op);
-        return *this;
-    }
-
-    template<class Output, class UnaryOperation>
-    constexpr tvector & transform(Output firstOutput, UnaryOperation op) {
-        std::transform(cbegin(), cend(), firstOutput, op);
-        return *this;
-    }
-
-    // Transforms and stores in output each component of the vector combined with the firstInput iterator elements using the op function.
-    // output[i] = op(this[i], input[i])
-    // Usually: std::function<O(const T &, const I &)>
-    //---------------------------------
-    template<class Input, class Output, class BinaryOperation>
-    constexpr const tvector & transform(Input firstInput, Output firstOutput, BinaryOperation op) const {
-        std::transform(cbegin(), cend(), firstInput, firstOutput, op);
-        return *this;
-    }
-
-    template<class Input, class Output, class BinaryOperation>
-    constexpr tvector & transform(Input firstInput, Output firstOutput, BinaryOperation op) {
-        std::transform(cbegin(), cend(), firstInput, firstOutput, op);
-        return *this;
-    }
-
-    // Transforms and stores each component of the vector using the op function into the output.
-    // Output will be resized to the same size as this vector.
-    // output[i] = op(this[i])
-    // Usually: std::function<O(const T &)>
-    //---------------------------------
-    template<template <typename...> class OutputClass, typename... Args, class UnaryOperation>
-    constexpr const tvector & transform(OutputClass<Args...> &output, UnaryOperation op) const {
-        if (output.size() < size())
-            output.resize(size());
-
-        std::transform(cbegin(), cend(), output.begin(), op);
-        return *this;
-    }
-
-    template<template <typename...> class OutputClass, typename... Args, class UnaryOperation>
-    constexpr tvector & transform(OutputClass<Args...> &output, UnaryOperation op) {
-        if (output.size() < size())
-            output.resize(size());
-
-        std::transform(cbegin(), cend(), output.begin(), op);
-        return *this;
-    }
-
-    // for_each
+    // For each
     //---------------------------------
     constexpr const tvector & for_each(std::function<void(const T &)> op) const {
         std::for_each(cbegin(), cend(), op);
@@ -377,20 +335,36 @@ public:
     // Sort
     //---------------------------------
     constexpr tvector & sort()                                              { std::sort(begin(), end()); return *this;              }
-    template <class Less>
-    constexpr tvector & sort(Less less)                                     { std::sort(begin(), end(), less); return *this;        }
+    constexpr tvector & sort(FuncLess less)                                 { std::sort(begin(), end(), less); return *this;        }
 
     constexpr tvector & stable_sort()                                       { std::stable_sort(begin(), end()); return *this;       }
-    template <class Less>
-    constexpr tvector & stable_sort(Less less)                              { std::stable_sort(begin(), end(), less); return *this; }
+    constexpr tvector & stable_sort(FuncLess less)                          { std::stable_sort(begin(), end(), less); return *this; }
 
     constexpr bool is_sorted() const                                        { return std::is_sorted(cbegin(), cend());              }
-    template <class Less>
-    constexpr bool is_sorted(Less less) const                               { return std::is_sorted(cbegin(), cend(), less);        }
+    constexpr bool is_sorted(FuncLess less) const                           { return std::is_sorted(cbegin(), cend(), less);        }
 
+    // Search on sorted vectors
     constexpr bool binary_search(const T &value) const                      { return std::binary_search(cbegin(), cend(), value);   }
-    template <class Less>
-    constexpr bool binary_search(const T &value, Less less) const           { return std::binary_search(cbegin(), cend(), value, less); }
+    constexpr bool binary_search(const T &value, FuncLess less) const       { return std::binary_search(cbegin(), cend(), value, less); }
+
+    constexpr citer binary_search_it(const T &value) const {
+        if (empty() == false) {
+            auto it = std::lower_bound(cbegin(), cend(), value);
+            if ((it != cend()) && (value >= *it))
+                return it;
+        }
+
+        return cend();
+    }
+    constexpr citer binary_search_it(const T &value, FuncLess less) const {
+        if (empty() == false) {
+            auto it = std::lower_bound(cbegin(), cend(), value, less);
+            if ((it != cend()) && (value >= *it))
+                return it;
+        }
+
+        return cend();
+    }
 
     // Unique
     //---------------------------------
@@ -428,7 +402,7 @@ public:
     enum class MinMax { Min, Max};
 
     // To avoid repeating the code
-    template<typename Iterator, typename FuncLess = std::less<T>>
+    template <typename Iterator, typename FuncLess = std::less<T>>
     const T &find_extremum(Iterator begin, Iterator end, const MinMax &minmax, const FuncLess &less = FuncLess {}) const {
         if (empty() == false) {
             return (minmax == MinMax::Min) ? *std::min_element(begin, end, less) : *std::max_element(begin, end, less);
@@ -489,6 +463,285 @@ public:
     constexpr std::pair<citer, citer> minmax_it(FuncLess less) const        { return std::minmax_element(cbegin(), cend(), less);   }
     constexpr std::pair< iter,  iter> minmax_it(FuncLess less)              { return std::minmax_element( begin(),  end(), less);   }
 
+    // Transform
+    //---------------------------------
+    // Transforms and stores each component of the vector using the op function into the output iterator.
+    // output[i] = op(this[i])
+    // Usually: std::function<O(const T &)>
+    //---------------------------------
+    template <class Output, class UnaryOperation>
+    constexpr const tvector & transform(Output firstOutput, UnaryOperation op) const {
+        std::transform(cbegin(), cend(), firstOutput, op);
+        return *this;
+    }
+    template <class Output, class UnaryOperation>
+    constexpr tvector & transform(Output firstOutput, UnaryOperation op) {
+        std::transform(cbegin(), cend(), firstOutput, op);
+        return *this;
+    }
+
+    // Execution policy must be ne of:
+    //   - std::execution::seq: execution may not be parallelized.
+    //   - std::execution::par: execution may be parallelized.
+    //   - std::execution::par_unseq: execution may be parallelized, vectorized, or migrated across threads.
+    //   - std::execution::unseq: execution may be vectorized. [C++20]
+
+    template <class Output, class UnaryOperation>
+    constexpr const tvector & transform(ExecutionPolicy policy, Output firstOutput, UnaryOperation op) const {
+        unconst().transform(policy, firstOutput, op);
+        return *this;
+    }
+    template <class Output, class UnaryOperation>
+    constexpr tvector & transform(ExecutionPolicy policy, Output firstOutput, UnaryOperation op) {
+        switch (policy) {
+#if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+            case ExecutionPolicy::seq:
+                std::transform(std::execution::seq, cbegin(), cend(), firstOutput, op);
+                break;
+
+            case ExecutionPolicy::par:
+                std::transform(std::execution::par, cbegin(), cend(), firstOutput, op);
+                break;
+
+            case ExecutionPolicy::par_unseq:
+                std::transform(std::execution::par_unseq, cbegin(), cend(), firstOutput, op);
+                break;
+
+    #if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+            case ExecutionPolicy::unseq:
+                std::transform(std::execution::unseq, cbegin(), cend(), firstOutput, op);
+                break;
+    #endif
+
+            default:
+                std::transform(cbegin(), cend(), firstOutput, op);
+                break;
+#endif
+        }
+        
+        return *this;
+    }
+
+    // Transforms and stores in output each component of the vector combined with the firstInput iterator elements using the op function.
+    // output[i] = op(this[i], input[i])
+    // Usually: std::function<O(const T &, const I &)>
+    //---------------------------------
+    template <class Input, class Output, class BinaryOperation>
+    constexpr const tvector & transform(Input firstInput, Output firstOutput, BinaryOperation op) const {
+        std::transform(cbegin(), cend(), firstInput, firstOutput, op);
+        return *this;
+    }
+    template <class Input, class Output, class BinaryOperation>
+    constexpr tvector & transform(Input firstInput, Output firstOutput, BinaryOperation op) {
+        std::transform(cbegin(), cend(), firstInput, firstOutput, op);
+        return *this;
+    }
+
+    // Execution policy must be ne of:
+    //   - std::execution::seq: execution may not be parallelized.
+    //   - std::execution::par: execution may be parallelized.
+    //   - std::execution::par_unseq: execution may be parallelized, vectorized, or migrated across threads.
+    //   - std::execution::unseq: execution may be vectorized. [C++20]
+    template <class Input, class Output, class BinaryOperation>
+    constexpr const tvector & transform(ExecutionPolicy policy, Input firstInput, Output firstOutput, BinaryOperation op) const {
+        unconst().transform(policy, firstInput, firstOutput, op);
+        return *this;
+    }
+    template <class Input, class Output, class BinaryOperation>
+    constexpr tvector & transform(ExecutionPolicy policy, Input firstInput, Output firstOutput, BinaryOperation op) {
+        switch (policy) {
+#if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+            case ExecutionPolicy::seq:
+                std::transform(std::execution::seq, cbegin(), cend(), firstInput, firstOutput, op);
+                break;
+
+            case ExecutionPolicy::par:
+                std::transform(std::execution::par, cbegin(), cend(), firstInput, firstOutput, op);
+                break;
+
+            case ExecutionPolicy::par_unseq:
+                std::transform(std::execution::par_unseq, cbegin(), cend(), firstInput, firstOutput, op);
+                break;
+
+    #if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+            case ExecutionPolicy::unseq:
+                std::transform(std::execution::unseq, cbegin(), cend(), firstInput, firstOutput, op);
+                break;
+    #endif
+
+            default:
+                std::transform(cbegin(), cend(), firstInput, firstOutput, op);
+                break;
+
+#endif
+        }
+        return *this;
+    }
+
+    // Transforms and stores each component of the vector using the op function into the output.
+    // Output will be resized to the same size as this vector.
+    // output[i] = op(this[i])
+    // Usually: std::function<O(const T &)>
+    //---------------------------------
+    template <template <typename...> class OutputClass, typename... Args, class UnaryOperation>
+    constexpr const tvector & transform(OutputClass<Args...> &output, UnaryOperation op) const {
+        if (output.size() < size())
+            output.resize(size());
+
+        std::transform(cbegin(), cend(), output.begin(), op);
+        return *this;
+    }
+
+    template <template <typename...> class OutputClass, typename... Args, class UnaryOperation>
+    constexpr tvector & transform(OutputClass<Args...> &output, UnaryOperation op) {
+        if (output.size() < size())
+            output.resize(size());
+
+        std::transform(cbegin(), cend(), output.begin(), op);
+        return *this;
+    }
+
+    // Execution policy must be ne of:
+    //   - std::execution::seq: execution may not be parallelized.
+    //   - std::execution::par: execution may be parallelized.
+    //   - std::execution::par_unseq: execution may be parallelized, vectorized, or migrated across threads.
+    //   - std::execution::unseq: execution may be vectorized. [C++20]
+    template <template <typename...> class OutputClass, typename... Args, class UnaryOperation>
+    constexpr const tvector & transform(ExecutionPolicy policy, OutputClass<Args...> &output, UnaryOperation op) const {
+        unconst().transform(policy, output, op);
+        return *this;
+    }
+
+    template <template <typename...> class OutputClass, typename... Args, class UnaryOperation>
+    constexpr tvector & transform(ExecutionPolicy policy, OutputClass<Args...> &output, UnaryOperation op) {
+        if (output.size() < size())
+            output.resize(size());
+
+        switch (policy) {
+#if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+            case ExecutionPolicy::seq:
+                std::transform(std::execution::seq, cbegin(), cend(), output.begin(), op);
+                break;
+
+            case ExecutionPolicy::par:
+                std::transform(std::execution::par, cbegin(), cend(), output.begin(), op);
+                break;
+
+            case ExecutionPolicy::par_unseq:
+                std::transform(std::execution::par_unseq, cbegin(), cend(), output.begin(), op);
+                break;
+
+    #if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+            case ExecutionPolicy::unseq:
+                std::transform(std::execution::unseq, cbegin(), cend(), output.begin(), op);
+                break;
+    #endif
+
+            default:
+                std::transform(cbegin(), cend(), output.begin(), op);
+                break;
+#endif
+        }
+        return *this;
+    }
+
+    // Accumulate
+    //---------------------------------
+    // The order of operations are left to right
+    template <class U, class BinaryOperation>
+    constexpr U accumulate(U init, BinaryOperation op) const {
+        return std::accumulate(cbegin(), cend(), init, op);
+    }
+
+
+    // Reduce / transform_reduce
+    //---------------------------------
+    // The order of operations is not guaranteed
+    // Note: Requires that the BinaryOperation satisfy the commutative: "A op B == B op A" and
+    // associative: "(A op B) op C == A op (B op C)" properties
+    template <class U, class BinaryOperation>
+    constexpr U reduce(U init, BinaryOperation op) const {
+#if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+        return std::reduce(cbegin(), cend(), init, op);
+#else
+        return std::accumulate(cbegin(), cend(), init, op);
+#endif
+    }
+
+#if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+    template <class U, class BinaryReductionOp, class UnaryTransformOp>
+    constexpr U transform_reduce(U init, BinaryReductionOp reduce, UnaryTransformOp transform) const {
+        return std::transform_reduce(cbegin(), cend(), init, reduce, transform);
+    }
+#else
+    template<class U, typename BinaryReductionOp, typename UnaryTransformOp>
+    auto transform_reduce(U init, BinaryReductionOp reduce, UnaryTransformOp transform) {
+        return std::accumulate(cbegin(), cend(), init, [&](const auto& acc, const auto& val) {
+            return reduce(acc, transform(val));
+        });
+    }
+#endif
+
+    // The order of operations is not guaranteed
+    // Execution policy must be ne of:
+    //   - std::execution::seq: execution may not be parallelized.
+    //   - std::execution::par: execution may be parallelized.
+    //   - std::execution::par_unseq: execution may be parallelized, vectorized, or migrated across threads.
+    //   - std::execution::unseq: execution may be vectorized. [C++20]
+    template <class U, class BinaryOperation>
+    constexpr U reduce(ExecutionPolicy policy, U init, BinaryOperation op) const {
+#if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+        switch (policy) {
+            case ExecutionPolicy::seq:
+                return std::reduce(std::execution::seq, cbegin(), cend(), init, op);
+
+            case ExecutionPolicy::par:
+                return std::reduce(std::execution::par, cbegin(), cend(), init, op);
+
+            case ExecutionPolicy::par_unseq:
+                return std::reduce(std::execution::par_unseq, cbegin(), cend(), init, op);
+
+    #if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+            case ExecutionPolicy::unseq:
+                return std::reduce(std::execution::unseq, cbegin(), cend(), init, op);
+    #endif
+            default:
+                return std::reduce(cbegin(), cend(), init, op);
+        }
+#else
+        return std::accumulate(cbegin(), cend(), init, op);
+#endif
+
+        return {};
+    }
+
+    template <class U, class BinaryReductionOp, class UnaryTransformOp>
+    constexpr U transform_reduce(ExecutionPolicy policy, U init, BinaryReductionOp reduce, UnaryTransformOp transform) const {
+#if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+        switch (policy) {
+            case ExecutionPolicy::seq:
+                return std::transform_reduce(std::execution::seq, cbegin(), cend(), init, reduce, transform);
+
+            case ExecutionPolicy::par:
+                return std::transform_reduce(std::execution::par, cbegin(), cend(), init, reduce, transform);
+
+            case ExecutionPolicy::par_unseq:
+                return std::transform_reduce(std::execution::par_unseq, cbegin(), cend(), init, reduce, transform);
+
+    #if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+            case ExecutionPolicy::unseq:
+                return std::transform_reduce(std::execution::unseq, cbegin(), cend(), init, reduce, transform);
+    #endif
+            default:
+                return std::transform_reduce(cbegin(), cend(), init, reduce, transform);
+        }
+#else
+        return std::accumulate(cbegin(), cend(), init, [&](const auto &acc, const auto &val) {
+            return reduce(acc, transform(val));
+        });
+#endif
+    }
+
 protected:
     constexpr iterator       correct(ptrdiff idx)                           { return (idx >= 0) ?  begin() + idx :  end() + idx + 1; }
     constexpr const_iterator correct(ptrdiff idx) const                     { return (idx >= 0) ? cbegin() + idx : cend() + idx + 1; }
@@ -497,10 +750,13 @@ protected:
     constexpr iterator       correctInside(ptrdiff idx)                     { return (idx >= 0) ?  begin() + idx :  end() + idx; }
     constexpr const_iterator correctInside(ptrdiff idx) const               { return (idx >= 0) ? cbegin() + idx : cend() + idx; }
     constexpr ptrdiff        correctInsideIdx(ptrdiff idx) const            { return (idx >= 0) ? idx : size() + idx; }
+
+    // Avoid duplicate some functions
+    constexpr tvector &      unconst() const                                { return *const_cast<tvector *>(this); }
 };
 
 //-------------------------------------
-template<class T, class Allocator = std::allocator<T>>
+template <class T, class Allocator = std::allocator<T>>
 constexpr TVector<T, Allocator> &
 asTVector(std::vector<T, Allocator> &vec) {
     //return *reinterpret_cast<TVector<T, Allocator> *>(&vec);
@@ -508,7 +764,7 @@ asTVector(std::vector<T, Allocator> &vec) {
 }
 
 //-------------------------------------
-template<class T, class Allocator = std::allocator<T>>
+template <class T, class Allocator = std::allocator<T>>
 constexpr const TVector<T, Allocator> &
 asTVector(const std::vector<T, Allocator> &vec) {
     //return *reinterpret_cast<const TVector<T, Allocator> *>(&vec);
