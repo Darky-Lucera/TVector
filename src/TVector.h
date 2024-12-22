@@ -182,6 +182,24 @@ public:
         return *this;
     }
 
+    constexpr bool eraseValue(const T &value) {
+        auto it = std::find(begin(), end(), value); 
+        if (it != end()) { 
+            erase(it); 
+            return true; 
+        } 
+        return false;    
+    }
+
+    constexpr bool eraseAll(const T &value) {
+        auto it = std::remove(begin(), end(), value);
+        if (it != end()) {
+            erase(it, end());
+            return true;
+        }
+        return false;
+    }
+
     // Find
     //---------------------------------
     constexpr const_iterator find(const T &value) const                     { return std::find(cbegin(), cend(), value);                    }

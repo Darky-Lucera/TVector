@@ -276,6 +276,13 @@ TEST_CASE_FIXTURE(Fixture, "Modifiers") {
         CHECK(ints == TVector<int> { 0 });
         ints.erase(0);
         CHECK(ints == TVector<int> { });
+
+        ints = { 0, 1, 0, 2, 0, 3, 0, 4};
+        ints.eraseValue(0);
+        ints.eraseValue(4);
+        CHECK(ints == TVector<int> { 1, 0, 2, 0, 3, 0 });
+        ints.eraseAll(0);
+        CHECK(ints == TVector<int> { 1, 2, 3 });
     }
 
     SUBCASE("EraseQuick") {
